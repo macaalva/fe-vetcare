@@ -38,7 +38,7 @@ export default function Dashboard() {
         <p className="text-muted-foreground">¿Qué necesitas hoy?</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4">
         {menuItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -55,19 +55,6 @@ export default function Dashboard() {
           );
         })}
       </div>
-
-      <button
-        onClick={() => navigate("/home/vet-dashboard")}
-        className="bg-secondary border-2 border-primary/20 rounded-2xl p-4 flex items-center gap-3 hover:bg-accent transition-colors"
-      >
-        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-          <Building2 className="w-6 h-6 text-primary" />
-        </div>
-        <div className="flex-1 text-left">
-          <p className="text-foreground font-medium">¿Eres veterinaria?</p>
-          <p className="text-sm text-muted-foreground">Accede al panel de administración</p>
-        </div>
-      </button>
     </div>
   );
 }

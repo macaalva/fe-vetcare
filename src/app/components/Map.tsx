@@ -32,9 +32,12 @@ export default function Map() {
   const [mapCenter, setMapCenter] = useState({ lat: -34.6037, lng: -58.3816 });
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(true);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showReviews, setShowReviews] = useState<{ vetId: number; vetName: string } | null>(null);
+  const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+  const [isAutocompleteReady, setIsAutocompleteReady] = useState(false);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
@@ -42,6 +45,7 @@ export default function Map() {
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+  const searchInputRef = useRef<HTMLDivElement>(null);
 
   const veterinariasBase: Veterinaria[] = [
     {
@@ -134,32 +138,81 @@ export default function Map() {
     return distance;
   };
 
+  // Obtener ubicación automáticamente al cargar
+  useEffect(() => {
+    if (navigator.geolocation) {
+      setIsLoadingLocation(true);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const newCenter = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setUserLocation(newCenter);
+          setIsLoadingLocation(false);
+
+          // Agregar marcador de ubicación del dispositivo
+          if (googleMapRef.current) {
+            googleMapRef.current.setCenter(newCenter);
+            googleMapRef.current.setZoom(14);
+
+            // Crear marcador de ubicación del usuario
+            if (userMarkerRef.current) {
+              userMarkerRef.current.setMap(null);
+            }
+
+            userMarkerRef.current = new window.google.maps.Marker({
+              position: newCenter,
+              map: googleMapRef.current,
+              title: "Tu ubicación",
+              icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 12,
+                fillColor: "#4285F4",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 3,
+              },
+            });
+          }
+        },
+        () => {
+          setIsLoadingLocation(false);
+          console.log("No se pudo obtener ubicación automática");
+        }
+      );
+    }
+  }, []);
+
   // Actualizar distancias cuando cambie la ubicación del usuario
   useEffect(() => {
     if (userLocation) {
-      const updatedVeterinarias = veterinariasBase.map(vet => {
-        const distance = calculateDistance(
-          userLocation.lat,
-          userLocation.lng,
-          vet.lat,
-          vet.lng
-        );
-        return {
-          ...vet,
-          distance: distance < 1
-            ? `${Math.round(distance * 1000)} m`
-            : `${distance.toFixed(1)} km`
-        };
-      });
+      setIsCalculatingDistance(true);
+      setTimeout(() => {
+        const updatedVeterinarias = veterinariasBase.map(vet => {
+          const distance = calculateDistance(
+            userLocation.lat,
+            userLocation.lng,
+            vet.lat,
+            vet.lng
+          );
+          return {
+            ...vet,
+            distance: distance < 1
+              ? `${Math.round(distance * 1000)} m`
+              : `${distance.toFixed(1)} km`
+          };
+        });
 
-      // Ordenar por distancia más cercana
-      updatedVeterinarias.sort((a, b) => {
-        const distA = parseFloat(a.distance);
-        const distB = parseFloat(b.distance);
-        return distA - distB;
-      });
+        updatedVeterinarias.sort((a, b) => {
+          const distA = parseFloat(a.distance);
+          const distB = parseFloat(b.distance);
+          return distA - distB;
+        });
 
-      setVeterinarias(updatedVeterinarias);
+        setVeterinarias(updatedVeterinarias);
+        setIsCalculatingDistance(false);
+      }, 300);
     } else {
       setVeterinarias(veterinariasBase);
     }
@@ -185,13 +238,19 @@ export default function Map() {
 
           await new Promise<void>((resolve, reject) => {
             script.onload = () => resolve();
-            script.onerror = reject;
+            script.onerror = () => reject(new Error("Error cargando Google Maps"));
             document.head.appendChild(script);
           });
         }
 
+        // Verificar que google esté disponible
+        if (!window.google || !window.google.maps) {
+          console.error("Google Maps no está disponible");
+          return;
+        }
+
         // Inicializar mapa
-        const map = new google.maps.Map(mapRef.current, {
+        const map = new window.google.maps.Map(mapRef.current, {
           center: mapCenter,
           zoom: 13,
           styles: [
@@ -206,17 +265,20 @@ export default function Map() {
         googleMapRef.current = map;
 
         // Inicializar servicios
-        autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
-        geocoderRef.current = new google.maps.Geocoder();
+        autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService();
+        geocoderRef.current = new window.google.maps.Geocoder();
+        
+        console.log("Autocomplete service inicializado");
+        setIsAutocompleteReady(true);
 
         // Agregar marcadores de veterinarias
         veterinariasBase.forEach((vet) => {
-          const marker = new google.maps.Marker({
+          const marker = new window.google.maps.Marker({
             position: { lat: vet.lat, lng: vet.lng },
             map: map,
             title: vet.name,
             icon: {
-              path: google.maps.SymbolPath.CIRCLE,
+              path: window.google.maps.SymbolPath.CIRCLE,
               scale: 12,
               fillColor: "#a78763",
               fillOpacity: 1,
@@ -225,7 +287,7 @@ export default function Map() {
             },
           });
 
-          const infoWindow = new google.maps.InfoWindow({
+          const infoWindow = new window.google.maps.InfoWindow({
             content: `
               <div style="padding: 8px; max-width: 250px;">
                 <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #3d3d3d;">${vet.name}</h3>
@@ -251,39 +313,62 @@ export default function Map() {
     initMap();
   }, []);
 
-  const handleSearchChange = async (value: string) => {
+  // Cerrar sugerencias al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSearchChange = (value: string) => {
     setSearchAddress(value);
 
-    if (value.length < 3 || !autocompleteServiceRef.current) {
+    if (value.length < 4) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
 
-    try {
-      const request = {
-        input: value,
-        componentRestrictions: { country: "ar" },
-        types: ["address"],
-        bounds: {
-          north: -34.5,
-          south: -34.75,
-          east: -58.3,
-          west: -58.6,
-        },
-      };
+    const searchTerm = value.toLowerCase();
+    
+    // Buscar primero en veterinarias locales
+    const localMatches = veterinariasBase
+      .filter(v => 
+        v.name.toLowerCase().includes(searchTerm) || 
+        v.address.toLowerCase().includes(searchTerm)
+      )
+      .map(v => v.address);
 
-      autocompleteServiceRef.current.getPlacePredictions(request, (predictions, status) => {
-        if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-          setSuggestions(predictions.map(p => p.description));
-          setShowSuggestions(true);
-        } else {
-          setSuggestions([]);
-          setShowSuggestions(false);
+    // Si tenemos resultados locales, mostrarlos
+    if (localMatches.length > 0) {
+      setSuggestions(localMatches);
+      setShowSuggestions(true);
+      return;
+    }
+
+    // Intentar con Geocoding API (alternativa a Places)
+    if (geocoderRef.current) {
+      geocoderRef.current.geocode(
+        { address: searchTerm + ", Buenos Aires, Argentina" },
+        (results, status) => {
+          if (status === "OK" && results && results.length > 0) {
+            const suggestionsList = results.slice(0, 5).map(r => r.formatted_address);
+            setSuggestions(suggestionsList);
+            setShowSuggestions(true);
+          } else {
+            // Si no hay resultados, mostrar mensaje de ejemplo
+            setSuggestions([
+              `Av. ${searchTerm}, Buenos Aires, Argentina`,
+              `Calle ${searchTerm}, Buenos Aires, Argentina`,
+            ].slice(0, 2));
+            setShowSuggestions(true);
+          }
         }
-      });
-    } catch (error) {
-      console.error("Error en búsqueda:", error);
+      );
     }
   };
 
@@ -323,12 +408,12 @@ export default function Map() {
         }
 
         // Agregar marcador de ubicación del usuario
-        userMarkerRef.current = new google.maps.Marker({
+        userMarkerRef.current = new window.google.maps.Marker({
           position: newCenter,
           map: googleMapRef.current,
           title: "Tu ubicación",
           icon: {
-            path: google.maps.SymbolPath.CIRCLE,
+            path: window.google.maps.SymbolPath.CIRCLE,
             scale: 10,
             fillColor: "#4285F4",
             fillOpacity: 1,
@@ -365,12 +450,12 @@ export default function Map() {
             }
 
             // Agregar marcador de ubicación del usuario
-            userMarkerRef.current = new google.maps.Marker({
+            userMarkerRef.current = new window.google.maps.Marker({
               position: newCenter,
               map: googleMapRef.current,
               title: "Tu ubicación",
               icon: {
-                path: google.maps.SymbolPath.CIRCLE,
+                path: window.google.maps.SymbolPath.CIRCLE,
                 scale: 10,
                 fillColor: "#4285F4",
                 fillOpacity: 1,
@@ -394,14 +479,18 @@ export default function Map() {
         <div className="bg-white rounded-2xl shadow-lg p-3">
           <div className="flex items-center gap-2">
             <Search className="w-5 h-5 text-muted-foreground" />
-            <div className="flex-1 relative">
+            <div className="flex-1 relative" ref={searchInputRef}>
               <input
                 type="text"
-                placeholder="Ingresa tu dirección..."
+                placeholder={isAutocompleteReady ? (isLoadingLocation ? "Detectando tu ubicación..." : "Buscá una dirección en AMBA...") : "Cargando mapa..."}
                 value={searchAddress}
-                onChange={(e) => handleSearchChange(e.target.value)}
+                onChange={(e) => {
+                  console.log("Input:", e.target.value);
+                  handleSearchChange(e.target.value);
+                }}
                 onKeyPress={(e) => e.key === 'Enter' && geocodeAddress(searchAddress)}
-                className="w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
+                disabled={!isAutocompleteReady}
+                className="w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground disabled:opacity-50"
               />
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-border max-h-60 overflow-y-auto z-20">
@@ -409,15 +498,16 @@ export default function Map() {
                     <button
                       key={index}
                       onClick={() => handleSelectSuggestion(suggestion)}
-                      className="w-full text-left px-4 py-3 hover:bg-secondary transition-colors text-sm text-foreground border-b border-border last:border-b-0"
+                      className="w-full text-left px-4 py-3 hover:bg-secondary transition-colors text-sm text-foreground border-b border-border last:border-b-0 flex items-start gap-2"
                     >
-                      {suggestion}
+                      <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                      <span>{suggestion}</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            {isSearching ? (
+            {isSearching || isLoadingLocation ? (
               <div className="p-2">
                 <Loader2 className="w-4 h-4 text-primary animate-spin" />
               </div>
@@ -467,10 +557,16 @@ export default function Map() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg text-foreground">Veterinarias cercanas</h2>
-              {userLocation && (
+              {userLocation && !isCalculatingDistance && (
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                   <Navigation className="w-3 h-3" />
-                  Ordenadas por distancia desde tu ubicación
+                  {isLoadingLocation ? "Ubicación detectada" : "Ordenadas por distancia"}
+                </p>
+              )}
+              {isCalculatingDistance && (
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Calculando distancias...
                 </p>
               )}
             </div>
