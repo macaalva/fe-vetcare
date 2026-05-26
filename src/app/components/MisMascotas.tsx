@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dog, Cat, Calendar, Weight, Palette, Ruler, Bell, FileText, ChevronRight, Plus, ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -46,19 +46,30 @@ export default function MisMascotas() {
     furColor: "",
   });
 
-  const [pets, setPets] = useState<Pet[]>([
-    {
-      id: 1,
-      name: "Max",
-      species: "Perro",
-      breed: "Golden Retriever",
-      age: 3,
-      weight: 28,
-      furType: "Largo",
-      furColor: "Dorado",
-    },
-  ]);
+  // 1. PRIMERO DECLARAMOS EL ESTADO DE LAS MASCOTAS
+  const [pets, setPets] = useState<Pet[]>([]);
 
+  // 2. DESPUÉS EXECUTAMOS EL EFECTO QUE USA ESE SETPETS
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/api/mascotas/")
+      .then((response) => response.json())
+      .then((data) => {
+        const mappedPets = data.map((mascota: any) => ({
+          id: mascota.id,
+          name: mascota.nombre,
+          species: mascota.especie,
+          breed: mascota.raza,
+          age: mascota.edad,
+          weight: mascota.peso,
+          furType: mascota.tipo_pelo,
+          furColor: mascota.color_pelo,
+        }));
+        setPets(mappedPets);
+      })
+      .catch((error) => console.error("Error al traer mascotas:", error));
+  }, []);
+
+  
   const [reminders] = useState<Reminder[]>([
     {
       id: 1,
